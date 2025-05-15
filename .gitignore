@@ -1,0 +1,38 @@
+# Node.js
+node_modules/
+dist/
+*.log
+npm-debug.log*
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.dll
+*.exe
+*.pdb
+
+# Project-specific
+feedback_data/
+*.tmp
+claude-desktop-config-example.json
+
+# IDE files
+.vs/
+.vscode/
+*_i.c
+*_p.c
+*.ilk
+*.meta
+*.obj
+*.pch
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp_proj
+*_wpftmp.csproj 
