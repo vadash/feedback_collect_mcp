@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
@@ -10,6 +11,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Media.TextFormatting;
+using System.Windows.Threading;
+using System.Windows.Data;
 
 namespace FeedbackApp
 {
@@ -20,6 +23,7 @@ namespace FeedbackApp
         private string? _outputFilePath;
         private bool _isSubmitSuccess = false;
         private string? _feedbackText;
+        private string _actionType = "submit"; // Action types: "submit", "approve", "reject", "ai_decide"
         
         // New properties for multiple images
         private List<ImageItem> _images = new List<ImageItem>();
@@ -29,6 +33,28 @@ namespace FeedbackApp
         
         // Added for text changes
         private System.Windows.Threading.DispatcherTimer? _textChangedTimer;
+        
+        // Auto-close timer properties
+        private DispatcherTimer? _autoCloseTimer;
+        private const int AutoCloseTimeoutSeconds = 15; // Close after 15 seconds of inactivity
+        private const string DefaultFeedbackMessage = "User did not provide feedback";
+        private int _remainingSeconds = AutoCloseTimeoutSeconds;
+        private DispatcherTimer? _countdownTimer;
+        private bool _isAutoClosePaused = false; // State for pause/resume
+
+        // Snippets collection
+        private ObservableCollection<Snippet> _snippets = new ObservableCollection<Snippet>();
+        private string _snippetsFilePath;
+
+        public ObservableCollection<Snippet> Snippets
+        {
+            get => _snippets;
+            set
+            {
+                _snippets = value;
+                OnPropertyChanged(nameof(Snippets));
+            }
+        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -61,6 +87,14 @@ namespace FeedbackApp
             _tempImageDirectory = Path.Combine(Path.GetTempPath(), "FeedbackApp_Images");
             Directory.CreateDirectory(_tempImageDirectory);
             
+            // Set up snippets file path
+            string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FeedbackApp");
+            Directory.CreateDirectory(appDataPath);
+            _snippetsFilePath = Path.Combine(appDataPath, "snippets.json");
+            
+            // Load snippets
+            LoadSnippets();
+            
             // Process command line arguments
             string[] args = Environment.GetCommandLineArgs();
             if (args.Length >= 2)
@@ -84,6 +118,363 @@ namespace FeedbackApp
             
             // Add event handler for text changes to recalculate window size
             FeedbackTextBox.TextChanged += FeedbackTextBox_TextChanged;
+            
+            // Start the auto-close timer
+            StartAutoCloseTimer();
+            
+            // Start the countdown timer
+            StartCountdownTimer();
+            
+            // Add event handlers to reset timer on user interaction
+            this.PreviewMouseMove += ResetAutoCloseTimer;
+            this.PreviewKeyDown += ResetAutoCloseTimer;
+            this.Activated += ResetAutoCloseTimer;
+        }
+
+        // Load snippets from file
+        private void LoadSnippets()
+        {
+            try
+            {
+                if (File.Exists(_snippetsFilePath))
+                {
+                    string json = File.ReadAllText(_snippetsFilePath);
+                    var loadedSnippets = JsonSerializer.Deserialize<List<Snippet>>(json);
+                    if (loadedSnippets != null)
+                    {
+                        Snippets.Clear();
+                        foreach (var snippet in loadedSnippets)
+                        {
+                            Snippets.Add(snippet);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading snippets: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        // Save snippets to file
+        private void SaveSnippets()
+        {
+            try
+            {
+                string json = JsonSerializer.Serialize(Snippets, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+                File.WriteAllText(_snippetsFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error saving snippets: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        // Handle snippet selection
+        private void SnippetsComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (SnippetsComboBox.SelectedItem is Snippet selectedSnippet)
+            {
+                string currentText = FeedbackTextBox.Text;
+                string snippetContent = selectedSnippet.Content;
+
+                if (!string.IsNullOrEmpty(currentText) && !currentText.EndsWith(Environment.NewLine))
+                {
+                    FeedbackTextBox.AppendText(Environment.NewLine);
+                }
+                FeedbackTextBox.AppendText(snippetContent);
+                FeedbackTextBox.CaretIndex = FeedbackTextBox.Text.Length;
+                FeedbackTextBox.ScrollToEnd();
+                
+                // Reset the combo box selection
+                SnippetsComboBox.SelectedIndex = -1;
+                
+                // Set focus back to the text box
+                FeedbackTextBox.Focus();
+            }
+        }
+
+        // Handle add new snippet button click
+        private void AddSnippetButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Stop the auto-close timer while dialog is open
+            if (_autoCloseTimer != null)
+            {
+                _autoCloseTimer.Stop();
+            }
+            if (_countdownTimer != null)
+            {
+                _countdownTimer.Stop();
+            }
+            
+            // Create a new dialog window to add a snippet
+            var dialog = new Window
+            {
+                Title = "Add New Snippet",
+                Width = 450,
+                Height = 280,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                Background = new SolidColorBrush(Color.FromRgb(250, 250, 250))
+            };
+
+            // Create the content
+            var mainBorder = new Border
+            {
+                Margin = new Thickness(15),
+                CornerRadius = new CornerRadius(6),
+                Background = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(224, 224, 224)),
+                BorderThickness = new Thickness(1)
+            };
+            
+            var grid = new Grid { Margin = new Thickness(20) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) }); // Spacer
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(50) });
+            
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            
+            // Title label and textbox
+            var titleLabel = new TextBlock { 
+                Text = "Title:", 
+                VerticalAlignment = VerticalAlignment.Center,
+                FontWeight = FontWeights.Medium
+            };
+            Grid.SetRow(titleLabel, 0);
+            Grid.SetColumn(titleLabel, 0);
+            
+            var titleBorder = new Border {
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(204, 204, 204)),
+                CornerRadius = new CornerRadius(4),
+                Background = Brushes.White
+            };
+            Grid.SetRow(titleBorder, 0);
+            Grid.SetColumn(titleBorder, 1);
+            
+            // Create a grid for the title textbox and watermark
+            var titleGrid = new Grid();
+            
+            var titleTextBox = new TextBox { 
+                Margin = new Thickness(5), 
+                VerticalAlignment = VerticalAlignment.Center,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                Padding = new Thickness(3)
+            };
+            
+            // Create watermark for title
+            var titleWatermark = new TextBlock {
+                Text = "Enter snippet title here",
+                Foreground = new SolidColorBrush(Color.FromRgb(153, 153, 153)),
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            };
+            
+            // Add both to the grid
+            titleGrid.Children.Add(titleTextBox);
+            titleGrid.Children.Add(titleWatermark);
+            
+            // Set up binding to hide watermark when text is entered
+            titleTextBox.TextChanged += (s, args) => {
+                titleWatermark.Visibility = string.IsNullOrEmpty(titleTextBox.Text) ? Visibility.Visible : Visibility.Collapsed;
+            };
+            
+            titleBorder.Child = titleGrid;
+            
+            // Content label and textbox
+            var contentLabel = new TextBlock { 
+                Text = "Content:", 
+                VerticalAlignment = VerticalAlignment.Top, 
+                Margin = new Thickness(0, 5, 0, 0),
+                FontWeight = FontWeights.Medium
+            };
+            Grid.SetRow(contentLabel, 2);
+            Grid.SetColumn(contentLabel, 0);
+            Grid.SetRowSpan(contentLabel, 2);
+            
+            var contentBorder = new Border {
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(204, 204, 204)),
+                CornerRadius = new CornerRadius(4),
+                Background = Brushes.White
+            };
+            Grid.SetRow(contentBorder, 2);
+            Grid.SetColumn(contentBorder, 1);
+            Grid.SetRowSpan(contentBorder, 2);
+            
+            // Create a grid for the content textbox and watermark
+            var contentGrid = new Grid();
+            
+            var contentTextBox = new TextBox { 
+                AcceptsReturn = true, 
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                Margin = new Thickness(5),
+                Padding = new Thickness(3)
+            };
+            
+            // Create watermark for content
+            var contentWatermark = new TextBlock {
+                Text = "Type your snippet content here",
+                Foreground = new SolidColorBrush(Color.FromRgb(153, 153, 153)),
+                Margin = new Thickness(8, 8, 0, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+                IsHitTestVisible = false
+            };
+            
+            // Add both to the grid
+            contentGrid.Children.Add(contentTextBox);
+            contentGrid.Children.Add(contentWatermark);
+            
+            // Set up binding to hide watermark when text is entered
+            contentTextBox.TextChanged += (s, args) => {
+                contentWatermark.Visibility = string.IsNullOrEmpty(contentTextBox.Text) ? Visibility.Visible : Visibility.Collapsed;
+            };
+            
+            contentBorder.Child = contentGrid;
+            
+            // Button panel
+            var buttonPanel = new StackPanel { 
+                Orientation = Orientation.Horizontal, 
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            Grid.SetRow(buttonPanel, 4);
+            Grid.SetColumn(buttonPanel, 0);
+            Grid.SetColumnSpan(buttonPanel, 2);
+            
+            // Create Button template with rounded corners
+            ControlTemplate buttonTemplate = new ControlTemplate(typeof(Button));
+            FrameworkElementFactory borderFactory = new FrameworkElementFactory(typeof(Border));
+            borderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+            borderFactory.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
+            borderFactory.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Button.BorderBrushProperty));
+            borderFactory.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Button.BorderThicknessProperty));
+            
+            FrameworkElementFactory contentPresenterFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+            contentPresenterFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            contentPresenterFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            contentPresenterFactory.SetValue(ContentPresenter.MarginProperty, new TemplateBindingExtension(Button.PaddingProperty));
+            
+            borderFactory.AppendChild(contentPresenterFactory);
+            buttonTemplate.VisualTree = borderFactory;
+            
+            // Add triggers for mouse over and pressed states
+            Trigger mouseOverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            mouseOverTrigger.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(229, 229, 229))));
+            mouseOverTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(204, 204, 204))));
+            buttonTemplate.Triggers.Add(mouseOverTrigger);
+            
+            Trigger pressedTrigger = new Trigger { Property = Button.IsPressedProperty, Value = true };
+            pressedTrigger.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(208, 208, 208))));
+            pressedTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(187, 187, 187))));
+            buttonTemplate.Triggers.Add(pressedTrigger);
+            
+            // Create Button styles
+            Style createSaveButtonStyle = new Style(typeof(Button));
+            createSaveButtonStyle.Setters.Add(new Setter(Button.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0, 120, 212))));
+            createSaveButtonStyle.Setters.Add(new Setter(Button.ForegroundProperty, Brushes.White));
+            createSaveButtonStyle.Setters.Add(new Setter(Button.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(0, 103, 184))));
+            createSaveButtonStyle.Setters.Add(new Setter(Button.BorderThicknessProperty, new Thickness(1)));
+            createSaveButtonStyle.Setters.Add(new Setter(Button.PaddingProperty, new Thickness(15, 6, 15, 6)));
+            createSaveButtonStyle.Setters.Add(new Setter(Button.MarginProperty, new Thickness(5, 0, 0, 0)));
+            createSaveButtonStyle.Setters.Add(new Setter(Button.TemplateProperty, buttonTemplate));
+            
+            Style createCancelButtonStyle = new Style(typeof(Button));
+            createCancelButtonStyle.Setters.Add(new Setter(Button.BackgroundProperty, new SolidColorBrush(Color.FromRgb(240, 240, 240))));
+            createCancelButtonStyle.Setters.Add(new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.FromRgb(51, 51, 51))));
+            createCancelButtonStyle.Setters.Add(new Setter(Button.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(224, 224, 224))));
+            createCancelButtonStyle.Setters.Add(new Setter(Button.BorderThicknessProperty, new Thickness(1)));
+            createCancelButtonStyle.Setters.Add(new Setter(Button.PaddingProperty, new Thickness(15, 6, 15, 6)));
+            createCancelButtonStyle.Setters.Add(new Setter(Button.MarginProperty, new Thickness(5, 0, 0, 0)));
+            createCancelButtonStyle.Setters.Add(new Setter(Button.TemplateProperty, buttonTemplate));
+            
+            var saveButton = new Button { 
+                Content = "Save", 
+                Width = 100, 
+                Height = 30, 
+                IsDefault = true,
+                Style = createSaveButtonStyle
+            };
+            
+            var cancelButton = new Button { 
+                Content = "Cancel", 
+                Width = 100, 
+                Height = 30, 
+                IsCancel = true,
+                Style = createCancelButtonStyle
+            };
+            
+            buttonPanel.Children.Add(cancelButton);
+            buttonPanel.Children.Add(saveButton);
+            
+            // Add all controls to the grid
+            grid.Children.Add(titleLabel);
+            grid.Children.Add(titleBorder);
+            grid.Children.Add(contentLabel);
+            grid.Children.Add(contentBorder);
+            grid.Children.Add(buttonPanel);
+            
+            // Set the content
+            mainBorder.Child = grid;
+            dialog.Content = mainBorder;
+            
+            // Wire up the save button
+            saveButton.Click += (s, args) =>
+            {
+                if (string.IsNullOrWhiteSpace(titleTextBox.Text))
+                {
+                    MessageBox.Show("Please enter a title for the snippet.", "Required Field", 
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                
+                if (string.IsNullOrWhiteSpace(contentTextBox.Text))
+                {
+                    MessageBox.Show("Please enter content for the snippet.", "Required Field", 
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                
+                // Add the new snippet
+                Snippets.Add(new Snippet
+                {
+                    Title = titleTextBox.Text.Trim(),
+                    Content = contentTextBox.Text
+                });
+                
+                // Save snippets to file
+                SaveSnippets();
+                
+                // Close the dialog
+                dialog.DialogResult = true;
+            };
+            
+            // Show the dialog
+            dialog.ShowDialog();
+            
+            // Restart auto-close timer after dialog is closed
+            if (string.IsNullOrWhiteSpace(FeedbackTextBox.Text) && !_isAutoClosePaused)
+            {
+                StartAutoCloseTimer();
+                StartCountdownTimer();
+                _remainingSeconds = AutoCloseTimeoutSeconds;
+                UpdateCountdownDisplay();
+            }
         }
 
         private void MainWindow_Closing(object sender, CancelEventArgs e)
@@ -431,13 +822,17 @@ namespace FeedbackApp
             {
                 if (string.IsNullOrWhiteSpace(FeedbackTextBox.Text))
                 {
-                    MessageBox.Show("Please enter your feedback before submitting.", "Required Field", 
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    // Instead of showing a message box, use a special action type for empty submissions
+                    _feedbackText = "User did not provide any feedback. Please continue without human guidance. Use your best judgment to proceed safely.";
+                    _actionType = "no_feedback"; // New action type for empty submissions
+                    _isSubmitSuccess = true;
+                    Close();
                     return;
                 }
 
                 // Store feedback data to be saved when window closes
                 _feedbackText = FeedbackTextBox.Text;
+                _actionType = "submit"; // Set action type to submit
                 _isSubmitSuccess = true;
                 
                 // Close the window - feedback will be saved in the Closing event handler
@@ -446,6 +841,75 @@ namespace FeedbackApp
             catch (Exception ex)
             {
                 MessageBox.Show($"Error preparing feedback: {ex.Message}", "Error", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                _isSubmitSuccess = false;
+            }
+        }
+
+        // New event handler for Approve button
+        private void ApproveButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Set default approval message if text box is empty
+                _feedbackText = string.IsNullOrWhiteSpace(FeedbackTextBox.Text) ? 
+                    "I approve. Please continue." : FeedbackTextBox.Text;
+                
+                _actionType = "approve"; // Set action type to approve
+                _isSubmitSuccess = true;
+                
+                // Close the window - feedback will be saved in the Closing event handler
+                Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error preparing approval: {ex.Message}", "Error", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                _isSubmitSuccess = false;
+            }
+        }
+
+        // New event handler for Reject button
+        private void RejectButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Set default rejection message if text box is empty
+                _feedbackText = string.IsNullOrWhiteSpace(FeedbackTextBox.Text) ? 
+                    "I reject. Please think of a better solution." : FeedbackTextBox.Text;
+                
+                _actionType = "reject"; // Set action type to reject
+                _isSubmitSuccess = true;
+                
+                // Close the window - feedback will be saved in the Closing event handler
+                Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error preparing rejection: {ex.Message}", "Error", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                _isSubmitSuccess = false;
+            }
+        }
+
+        // New event handler for AI Decide button
+        private void AiDecideButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Set default message if text box is empty
+                _feedbackText = string.IsNullOrWhiteSpace(FeedbackTextBox.Text) ? 
+                    "I want you judge your own decision and decide, I give you free will to judge and decide. Please consider all implications and potential risks before proceeding." : FeedbackTextBox.Text;
+                
+                _actionType = "ai_decide"; // Set action type to ai_decide
+                _isSubmitSuccess = true;
+                
+                // Close the window - feedback will be saved in the Closing event handler
+                Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error preparing AI decision request: {ex.Message}", "Error", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 _isSubmitSuccess = false;
             }
@@ -479,6 +943,7 @@ namespace FeedbackApp
                     hasImages = _images.Count > 0,
                     imageCount = _images.Count,
                     images = imagesList,
+                    actionType = _actionType, // Include the action type in the JSON output
                     timestamp = DateTime.Now.ToString("o")
                 };
 
@@ -652,21 +1117,23 @@ namespace FeedbackApp
         // Handle scroll changes in the TextBox
         private void FeedbackTextBox_ScrollChanged(object sender, ScrollChangedEventArgs e)
         {
+            if (ScrollIndicator == null) return; // Guard clause if ScrollIndicator is not ready
+
             // Show scroll indicator if there's vertical scrolling available
             if (e.ExtentHeight > e.ViewportHeight)
             {
                 ScrollIndicator.Visibility = Visibility.Visible;
                 
-                // Show bottom arrow only if not at the bottom
-                if (Math.Abs(e.VerticalOffset + e.ViewportHeight - e.ExtentHeight) < 0.5)
+                // Determine text based on scroll position
+                if (Math.Abs(e.VerticalOffset + e.ViewportHeight - e.ExtentHeight) < 0.5) // At the bottom
                 {
                     ScrollIndicator.Text = "⬆ Scroll for more ⬆";
                 }
-                else if (e.VerticalOffset < 0.5)
+                else if (e.VerticalOffset < 0.5) // At the top
                 {
                     ScrollIndicator.Text = "⬇ Scroll for more ⬇";
                 }
-                else
+                else // Somewhere in the middle
                 {
                     ScrollIndicator.Text = "⬆⬇ Scroll for more ⬆⬇";
                 }
@@ -680,52 +1147,81 @@ namespace FeedbackApp
         // Handler for text changes in the feedback textbox
         private void FeedbackTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            // Check if scrolling is needed and update the scroll indicator
-            UpdateScrollIndicatorVisibility();
+            // Reset the auto-close timer when text changes
+            if (_autoCloseTimer != null && !string.IsNullOrWhiteSpace(FeedbackTextBox.Text))
+            {
+                _autoCloseTimer.Stop();
+                _countdownTimer?.Stop();
+                CountdownTimer.Text = "";
+            }
+            else if (string.IsNullOrWhiteSpace(FeedbackTextBox.Text) && !_isAutoClosePaused)
+            {
+                // If text was cleared, restart the timers only if not paused
+                if (_autoCloseTimer != null)
+                {
+                    _autoCloseTimer.Start();
+                }
+                if (_countdownTimer != null)
+                {
+                    _countdownTimer.Start();
+                }
+                _remainingSeconds = AutoCloseTimeoutSeconds;
+                UpdateCountdownDisplay();
+            }
             
             // Use a timer to avoid excessive resizing on rapid typing
             if (_textChangedTimer == null)
             {
                 _textChangedTimer = new System.Windows.Threading.DispatcherTimer();
-                _textChangedTimer.Interval = TimeSpan.FromMilliseconds(500);
+                _textChangedTimer.Interval = TimeSpan.FromMilliseconds(100); // Reduced delay slightly
                 _textChangedTimer.Tick += (s, args) =>
                 {
+                    if (_textChangedTimer != null) _textChangedTimer.Stop(); // Stop timer first
                     this.SizeToContent = SizeToContent.Height;
-                    _textChangedTimer.Stop();
-                    
-                    // Re-check scrolling after resize
-                    UpdateScrollIndicatorVisibility();
+                    // Re-check scrolling after resize and delay
+                    UpdateScrollIndicatorVisibility(); 
                 };
             }
             
             // Reset and restart the timer when text changes
-            _textChangedTimer.Stop();
-            _textChangedTimer.Start();
+            if (_textChangedTimer != null) 
+            {
+                _textChangedTimer.Stop();
+                _textChangedTimer.Start();
+            }
         }
         
         // Helper method to update the scroll indicator visibility
         private void UpdateScrollIndicatorVisibility()
         {
-            // Get the ScrollViewer from the TextBox
-            var scrollViewer = GetScrollViewer(FeedbackTextBox);
-            if (scrollViewer != null)
+            if (FeedbackTextBox == null || ScrollIndicator == null) return; // Guard clause
+
+            try
             {
-                if (scrollViewer.ExtentHeight > scrollViewer.ViewportHeight)
+                var scrollViewer = GetScrollViewerForTextBox(FeedbackTextBox);
+                if (scrollViewer != null) 
                 {
-                    ScrollIndicator.Visibility = Visibility.Visible;
-                    
-                    // Determine scroll direction indicators
-                    if (Math.Abs(scrollViewer.VerticalOffset + scrollViewer.ViewportHeight - scrollViewer.ExtentHeight) < 0.5)
+                    // Check if the ScrollViewer itself is visible; otherwise, its scroll properties might not be relevant
+                    if (scrollViewer.IsVisible && scrollViewer.ExtentHeight > scrollViewer.ViewportHeight)
                     {
-                        ScrollIndicator.Text = "⬆ Scroll for more ⬆";
-                    }
-                    else if (scrollViewer.VerticalOffset < 0.5)
-                    {
-                        ScrollIndicator.Text = "⬇ Scroll for more ⬇";
+                        ScrollIndicator.Visibility = Visibility.Visible;
+                        
+                        if (Math.Abs(scrollViewer.VerticalOffset + scrollViewer.ViewportHeight - scrollViewer.ExtentHeight) < 0.5)
+                        {
+                            ScrollIndicator.Text = "⬆ Scroll for more ⬆";
+                        }
+                        else if (scrollViewer.VerticalOffset < 0.5)
+                        {
+                            ScrollIndicator.Text = "⬇ Scroll for more ⬇";
+                        }
+                        else
+                        {
+                            ScrollIndicator.Text = "⬆⬇ Scroll for more ⬆⬇";
+                        }
                     }
                     else
                     {
-                        ScrollIndicator.Text = "⬆⬇ Scroll for more ⬆⬇";
+                        ScrollIndicator.Visibility = Visibility.Collapsed;
                     }
                 }
                 else
@@ -733,49 +1229,585 @@ namespace FeedbackApp
                     ScrollIndicator.Visibility = Visibility.Collapsed;
                 }
             }
+            catch (Exception ex)
+            {
+                // Log this or handle; a crash here means something is very wrong with UI state
+                Console.WriteLine($"Error in UpdateScrollIndicatorVisibility: {ex.Message}");
+                if (ScrollIndicator != null) // Check if ScrollIndicator is null before accessing it
+                {
+                    ScrollIndicator.Visibility = Visibility.Collapsed; // Try to fail safe
+                }
+            }
         }
         
-        // Helper method to get the ScrollViewer of a TextBox
-        private ScrollViewer GetScrollViewer(TextBox textBox)
+        // Gets the ScrollViewer associated with a TextBox
+        private ScrollViewer? GetScrollViewerForTextBox(TextBox textBox)
         {
-            if (VisualTreeHelper.GetChildrenCount(textBox) == 0)
-            {
-                return null;
-            }
+            if (textBox == null) return null;
+
+            // Applying the template ensures parts like PART_ContentHost are loaded.
+            textBox.ApplyTemplate(); 
             
-            // Try to find the ScrollViewer
-            DependencyObject firstChild = VisualTreeHelper.GetChild(textBox, 0);
-            if (firstChild is ScrollViewer scrollViewer)
+            var partContentHost = textBox.Template?.FindName("PART_ContentHost", textBox) as ScrollViewer;
+            if (partContentHost != null)
             {
-                return scrollViewer;
+                return partContentHost;
             }
-            
-            // If not found directly, try recursively
-            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(firstChild); i++)
+
+            // Fallback: if PART_ContentHost isn't found (e.g., custom template),
+            // recursively search the visual tree of the TextBox.
+            return FindVisualChildRecursive<ScrollViewer>(textBox);
+        }
+
+        // Generic recursive helper to find a visual child of a specific type
+        private static T? FindVisualChildRecursive<T>(DependencyObject? parent) where T : DependencyObject
+        {
+            if (parent == null) return null;
+
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
             {
-                DependencyObject child = VisualTreeHelper.GetChild(firstChild, i);
-                if (child is ScrollViewer sv)
+                DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T typedChild)
                 {
-                    return sv;
+                    return typedChild;
                 }
                 
-                // Check one more level deep
-                for (int j = 0; j < VisualTreeHelper.GetChildrenCount(child); j++)
+                T? childOfChild = FindVisualChildRecursive<T>(child);
+                if (childOfChild != null)
                 {
-                    DependencyObject grandchild = VisualTreeHelper.GetChild(child, j);
-                    if (grandchild is ScrollViewer gsv)
-                    {
-                        return gsv;
-                    }
+                    return childOfChild;
                 }
             }
-            
             return null;
+        }
+
+        private void StartAutoCloseTimer()
+        {
+            _autoCloseTimer = new DispatcherTimer();
+            _autoCloseTimer.Interval = TimeSpan.FromSeconds(AutoCloseTimeoutSeconds);
+            _autoCloseTimer.Tick += AutoCloseTimer_Tick;
+            _autoCloseTimer.Start();
+            
+            // Reset the remaining seconds
+            _remainingSeconds = AutoCloseTimeoutSeconds;
+            UpdateCountdownDisplay();
+        }
+        
+        private void StartCountdownTimer()
+        {
+            _countdownTimer = new DispatcherTimer();
+            _countdownTimer.Interval = TimeSpan.FromSeconds(1);
+            _countdownTimer.Tick += CountdownTimer_Tick;
+            _countdownTimer.Start();
+        }
+        
+        private void CountdownTimer_Tick(object? sender, EventArgs e)
+        {
+            if (_isAutoClosePaused) return;
+
+            if (_remainingSeconds > 0 && string.IsNullOrWhiteSpace(FeedbackTextBox.Text))
+            {
+                _remainingSeconds--;
+                UpdateCountdownDisplay();
+            }
+        }
+        
+        private void UpdateCountdownDisplay()
+        {
+            if (string.IsNullOrWhiteSpace(FeedbackTextBox.Text))
+            {
+                CountdownTimer.Text = $"Auto-close: {_remainingSeconds}s";
+                
+                // Change color to red when time is running low
+                if (_remainingSeconds <= 5)
+                {
+                    CountdownTimer.Foreground = Brushes.Red;
+                    CountdownTimer.FontWeight = FontWeights.Bold;
+                }
+                else
+                {
+                    CountdownTimer.Foreground = new SolidColorBrush(Color.FromRgb(102, 102, 102)); // #666666
+                    CountdownTimer.FontWeight = FontWeights.Normal;
+                }
+            }
+            else
+            {
+                // Hide the countdown when there's text
+                CountdownTimer.Text = "";
+            }
+        }
+        
+        private void AutoCloseTimer_Tick(object? sender, EventArgs e)
+        {
+            if (_isAutoClosePaused) return; // Do nothing if paused
+
+            // If no feedback has been entered
+            if (string.IsNullOrWhiteSpace(FeedbackTextBox.Text))
+            {
+                // Set the default feedback message with no_feedback action type
+                _feedbackText = "User did not provide any feedback. You are now given the free will to judge and decide. Use your best judgment to proceed safely.";
+                _actionType = "no_feedback"; // Use the new action type for auto-close with no feedback
+                _isSubmitSuccess = true;
+                
+                // Close the window
+                Close();
+            }
+            else
+            {
+                // If there is feedback, stop the timer
+                _autoCloseTimer?.Stop();
+                _countdownTimer?.Stop();
+                CountdownTimer.Text = "";
+            }
+        }
+        
+        private void ResetAutoCloseTimer(object sender, EventArgs e)
+        {
+            // Only reset if feedback is empty and not paused
+            if (string.IsNullOrWhiteSpace(FeedbackTextBox.Text) && !_isAutoClosePaused)
+            {
+                if (_autoCloseTimer != null)
+                {
+                    _autoCloseTimer.Stop();
+                    _autoCloseTimer.Start();
+                    
+                    // Reset the countdown
+                    _remainingSeconds = AutoCloseTimeoutSeconds;
+                    UpdateCountdownDisplay();
+                }
+                else
+                {
+                    StartAutoCloseTimer();
+                }
+            }
         }
 
         protected void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        // Handle manage snippets button click
+        private void ManageSnippetsButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Stop the auto-close timer while dialog is open
+            if (_autoCloseTimer != null)
+            {
+                _autoCloseTimer.Stop();
+            }
+            if (_countdownTimer != null)
+            {
+                _countdownTimer.Stop();
+            }
+            
+            // Check if we have any snippets
+            if (Snippets.Count == 0)
+            {
+                MessageBox.Show("No snippets to manage. Create a snippet first.", "No Snippets", 
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                
+                // Restart auto-close timer after dialog is closed
+                if (string.IsNullOrWhiteSpace(FeedbackTextBox.Text) && !_isAutoClosePaused)
+                {
+                    StartAutoCloseTimer();
+                    StartCountdownTimer();
+                    _remainingSeconds = AutoCloseTimeoutSeconds;
+                    UpdateCountdownDisplay();
+                }
+                
+                return;
+            }
+            
+            // Create a new dialog window to manage snippets
+            var dialog = new Window
+            {
+                Title = "Manage Snippets",
+                Width = 600,
+                Height = 400,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                Background = new SolidColorBrush(Color.FromRgb(250, 250, 250))
+            };
+
+            // Create the content
+            var mainBorder = new Border
+            {
+                Margin = new Thickness(15),
+                CornerRadius = new CornerRadius(6),
+                Background = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(224, 224, 224)),
+                BorderThickness = new Thickness(1)
+            };
+            
+            var grid = new Grid { Margin = new Thickness(20) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(50) });
+            
+            // Header text
+            var headerText = new TextBlock 
+            { 
+                Text = "Select a snippet to edit or delete:", 
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            Grid.SetRow(headerText, 0);
+            
+            // Snippet list
+            var listBox = new ListBox 
+            { 
+                Margin = new Thickness(0, 0, 0, 15),
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(204, 204, 204)),
+                Background = Brushes.White
+            };
+            Grid.SetRow(listBox, 1);
+            
+            // Populate the list box with snippet items
+            foreach (var snippet in Snippets)
+            {
+                var item = new ListBoxItem { Content = snippet.Title, Tag = snippet };
+                listBox.Items.Add(item);
+            }
+            
+            // Button panel
+            var buttonPanel = new StackPanel 
+            { 
+                Orientation = Orientation.Horizontal, 
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetRow(buttonPanel, 2);
+            
+            // Create Button styles
+            Style editButtonStyle = new Style(typeof(Button));
+            editButtonStyle.BasedOn = Resources["ModernButton"] as Style;
+            
+            Style deleteButtonStyle = new Style(typeof(Button));
+            deleteButtonStyle.BasedOn = Resources["RedButton"] as Style;
+            
+            Style closeButtonStyle = new Style(typeof(Button));
+            closeButtonStyle.BasedOn = Resources["ModernButton"] as Style;
+            
+            // Create buttons
+            var editButton = new Button 
+            { 
+                Content = "Edit Selected", 
+                Width = 120, 
+                Height = 32,
+                Margin = new Thickness(0, 0, 10, 0),
+                Style = editButtonStyle,
+                IsEnabled = false // Disabled until a snippet is selected
+            };
+            
+            var deleteButton = new Button 
+            { 
+                Content = "Delete Selected", 
+                Width = 120, 
+                Height = 32,
+                Margin = new Thickness(0, 0, 10, 0),
+                Style = deleteButtonStyle,
+                IsEnabled = false // Disabled until a snippet is selected
+            };
+            
+            var closeButton = new Button 
+            { 
+                Content = "Close", 
+                Width = 80, 
+                Height = 32,
+                Style = closeButtonStyle,
+                IsCancel = true
+            };
+            
+            // Add buttons to panel
+            buttonPanel.Children.Add(editButton);
+            buttonPanel.Children.Add(deleteButton);
+            buttonPanel.Children.Add(closeButton);
+            
+            // Enable/disable edit and delete buttons based on selection
+            listBox.SelectionChanged += (s, args) => 
+            {
+                bool hasSelection = listBox.SelectedItem != null;
+                editButton.IsEnabled = hasSelection;
+                deleteButton.IsEnabled = hasSelection;
+            };
+            
+            // Handle edit button click
+            editButton.Click += (s, args) => 
+            {
+                if (listBox.SelectedItem is ListBoxItem selectedItem && selectedItem.Tag is Snippet selectedSnippet)
+                {
+                    // Open the edit dialog
+                    if (EditSnippet(selectedSnippet))
+                    {
+                        // Update the list item text if edited
+                        selectedItem.Content = selectedSnippet.Title;
+                    }
+                }
+            };
+            
+            // Handle delete button click
+            deleteButton.Click += (s, args) => 
+            {
+                if (listBox.SelectedItem is ListBoxItem selectedItem && selectedItem.Tag is Snippet selectedSnippet)
+                {
+                    var result = MessageBox.Show(
+                        $"Are you sure you want to delete the snippet '{selectedSnippet.Title}'?",
+                        "Confirm Delete",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
+                        
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        // Remove from collection
+                        Snippets.Remove(selectedSnippet);
+                        
+                        // Remove from list box
+                        listBox.Items.Remove(selectedItem);
+                        
+                        // Save to file
+                        SaveSnippets();
+                        
+                        // Disable buttons if no more snippets
+                        if (listBox.Items.Count == 0)
+                        {
+                            editButton.IsEnabled = false;
+                            deleteButton.IsEnabled = false;
+                        }
+                    }
+                }
+            };
+            
+            // Handle close button click
+            closeButton.Click += (s, args) => 
+            {
+                dialog.DialogResult = true;
+            };
+            
+            // Add all controls to the grid
+            grid.Children.Add(headerText);
+            grid.Children.Add(listBox);
+            grid.Children.Add(buttonPanel);
+            
+            // Set the content
+            mainBorder.Child = grid;
+            dialog.Content = mainBorder;
+            
+            // Show the dialog
+            dialog.ShowDialog();
+            
+            // Restart auto-close timer after dialog is closed
+            if (string.IsNullOrWhiteSpace(FeedbackTextBox.Text) && !_isAutoClosePaused)
+            {
+                StartAutoCloseTimer();
+                StartCountdownTimer();
+                _remainingSeconds = AutoCloseTimeoutSeconds;
+                UpdateCountdownDisplay();
+            }
+        }
+        
+        // Edit an existing snippet
+        private bool EditSnippet(Snippet snippet)
+        {
+            // Create a dialog window for editing the snippet
+            var dialog = new Window
+            {
+                Title = "Edit Snippet",
+                Width = 450,
+                Height = 280,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                Background = new SolidColorBrush(Color.FromRgb(250, 250, 250))
+            };
+
+            // Create the content
+            var mainBorder = new Border
+            {
+                Margin = new Thickness(15),
+                CornerRadius = new CornerRadius(6),
+                Background = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(224, 224, 224)),
+                BorderThickness = new Thickness(1)
+            };
+            
+            var grid = new Grid { Margin = new Thickness(20) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) }); // Spacer
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(50) });
+            
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            
+            // Title label and textbox
+            var titleLabel = new TextBlock { 
+                Text = "Title:", 
+                VerticalAlignment = VerticalAlignment.Center,
+                FontWeight = FontWeights.Medium
+            };
+            Grid.SetRow(titleLabel, 0);
+            Grid.SetColumn(titleLabel, 0);
+            
+            var titleBorder = new Border {
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(204, 204, 204)),
+                CornerRadius = new CornerRadius(4),
+                Background = Brushes.White
+            };
+            Grid.SetRow(titleBorder, 0);
+            Grid.SetColumn(titleBorder, 1);
+            
+            var titleTextBox = new TextBox { 
+                Text = snippet.Title,
+                Margin = new Thickness(8), 
+                VerticalAlignment = VerticalAlignment.Center,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent
+            };
+            
+            titleBorder.Child = titleTextBox;
+            
+            // Content label and textbox
+            var contentLabel = new TextBlock { 
+                Text = "Content:", 
+                VerticalAlignment = VerticalAlignment.Top, 
+                Margin = new Thickness(0, 5, 0, 0),
+                FontWeight = FontWeights.Medium
+            };
+            Grid.SetRow(contentLabel, 2);
+            Grid.SetColumn(contentLabel, 0);
+            Grid.SetRowSpan(contentLabel, 2);
+            
+            var contentBorder = new Border {
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(204, 204, 204)),
+                CornerRadius = new CornerRadius(4),
+                Background = Brushes.White
+            };
+            Grid.SetRow(contentBorder, 2);
+            Grid.SetColumn(contentBorder, 1);
+            Grid.SetRowSpan(contentBorder, 2);
+            
+            var contentTextBox = new TextBox { 
+                Text = snippet.Content,
+                AcceptsReturn = true, 
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                Margin = new Thickness(8)
+            };
+            
+            contentBorder.Child = contentTextBox;
+            
+            // Button panel
+            var buttonPanel = new StackPanel { 
+                Orientation = Orientation.Horizontal, 
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            Grid.SetRow(buttonPanel, 4);
+            Grid.SetColumn(buttonPanel, 0);
+            Grid.SetColumnSpan(buttonPanel, 2);
+            
+            // Create Button styles
+            Style saveButtonStyle = new Style(typeof(Button));
+            saveButtonStyle.BasedOn = Resources["AccentButton"] as Style;
+            
+            Style cancelButtonStyle = new Style(typeof(Button));
+            cancelButtonStyle.BasedOn = Resources["ModernButton"] as Style;
+            
+            var saveButton = new Button { 
+                Content = "Save Changes", 
+                Width = 120, 
+                Height = 32, 
+                IsDefault = true,
+                Style = saveButtonStyle
+            };
+            
+            var cancelButton = new Button { 
+                Content = "Cancel", 
+                Width = 80, 
+                Height = 32, 
+                IsCancel = true,
+                Style = cancelButtonStyle
+            };
+            
+            buttonPanel.Children.Add(cancelButton);
+            buttonPanel.Children.Add(saveButton);
+            
+            // Add all controls to the grid
+            grid.Children.Add(titleLabel);
+            grid.Children.Add(titleBorder);
+            grid.Children.Add(contentLabel);
+            grid.Children.Add(contentBorder);
+            grid.Children.Add(buttonPanel);
+            
+            // Set the content
+            mainBorder.Child = grid;
+            dialog.Content = mainBorder;
+            
+            // Wire up the save button
+            saveButton.Click += (s, args) =>
+            {
+                if (string.IsNullOrWhiteSpace(titleTextBox.Text))
+                {
+                    MessageBox.Show("Please enter a title for the snippet.", "Required Field", 
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                
+                if (string.IsNullOrWhiteSpace(contentTextBox.Text))
+                {
+                    MessageBox.Show("Please enter content for the snippet.", "Required Field", 
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                
+                // Update the snippet
+                snippet.Title = titleTextBox.Text.Trim();
+                snippet.Content = contentTextBox.Text;
+                
+                // Save snippets to file
+                SaveSnippets();
+                
+                // Close the dialog
+                dialog.DialogResult = true;
+            };
+            
+            // Show the dialog and return true if OK was clicked
+            bool? result = dialog.ShowDialog();
+            return result ?? false;
+        }
+
+        // Pause/Resume Button Click Handler
+        private void PauseResumeButton_Click(object sender, RoutedEventArgs e)
+        {
+            _isAutoClosePaused = !_isAutoClosePaused;
+
+            if (_isAutoClosePaused)
+            {
+                PauseResumeButton.Content = "Resume Timer";
+                _autoCloseTimer?.Stop();
+                _countdownTimer?.Stop();
+            }
+            else
+            {
+                PauseResumeButton.Content = "Pause Timer";
+                if (string.IsNullOrWhiteSpace(FeedbackTextBox.Text))
+                {
+                    // If resuming and textbox is empty, restart timers
+                    _remainingSeconds = AutoCloseTimeoutSeconds; // Reset remaining time
+                    StartAutoCloseTimer(); // This will also start the countdown timer via its logic
+                    StartCountdownTimer();
+                    UpdateCountdownDisplay();
+                }
+            }
         }
     }
 
@@ -785,5 +1817,17 @@ namespace FeedbackApp
         public string FilePath { get; set; } = "";
         public string MimeType { get; set; } = "";
         public UIElement? UiElement { get; set; }
+    }
+
+    // Class to store snippet information
+    public class Snippet
+    {
+        public string Title { get; set; } = "";
+        public string Content { get; set; } = "";
+
+        public override string ToString()
+        {
+            return Title;
+        }
     }
 } 

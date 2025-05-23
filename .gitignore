@@ -16,7 +16,7 @@ obj/
 # Project-specific
 feedback_data/
 *.tmp
-claude-desktop-config-example.json
+docs/
 
 # IDE files
 .vs/

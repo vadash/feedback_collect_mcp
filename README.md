@@ -1,12 +1,22 @@
 # User Feedback Collection MCP Server
 
-This project implements a Model Context Protocol (MCP) server that enables AI assistants to collect user feedback through a WPF GUI application. When the MCP tool is used, it launches a graphical interface where users can provide text feedback and optionally attach an image.
+This project implements a Model Context Protocol (MCP) server that enables AI assistants to collect user feedback through a WPF GUI application. When the `mcp_claudeflow_collect_feedback` tool is used, it launches a graphical interface where users can provide text feedback and optionally attach an image.
 
-## Components
+> **Note:** This project is designed for Windows only and does not support macOS or other operating systems. It was created as a personal project to enable more efficient collaboration with AI assistants, reducing unused requests and improving workflow continuity.
 
-1. **MCP Server** - A Node.js application that implements the MCP protocol and acts as an interface between the AI assistant and the user feedback collection GUI.
 
-2. **Feedback Collection GUI** - A .NET 8 WPF application that provides a user-friendly interface for collecting feedback and optionally attaching images.
+AI Rules:
+```
+# Feedback Collection Guidelines
+
+- Collect feedback before and after changes, or when requested.
+- Use clear titles and specific questions.
+- Wait for user input before proceeding.
+- Follow feedback exactly; if none, use best judgment.
+- Start a new cycle for additional requests.
+- Tool provides current time and timezone context. 
+```
+
 
 ## Requirements
 
@@ -39,10 +49,11 @@ This project implements a Model Context Protocol (MCP) server that enables AI as
    ```
    dotnet build -c Release
    ```
+   (Note: Ensure you are in the `FeedbackApp` directory before running this command.)
 
 ## Configuration
 
-To use this MCP server with Claude Desktop or another MCP client, add the following configuration:
+To use this MCP server with Cursor or another MCP client, add the following configuration:
 
 ```json
 {
@@ -57,34 +68,33 @@ To use this MCP server with Claude Desktop or another MCP client, add the follow
 
 Replace `C:/path/to/your/project` with the absolute path to your project directory.
 
-## How It Works
+## MCP Tools
 
-1. The AI assistant calls the `collect_feedback` tool from the MCP server.
-2. The MCP server launches the WPF GUI application.
-3. The user enters feedback text and optionally attaches an image.
-4. The user clicks "Submit Feedback" to send the feedback back to the MCP server.
-5. The MCP server formats the feedback data and returns it to the AI assistant.
-6. The assistant can now process and respond to the feedback.
+This server provides the following tools:
 
-## Tool Parameters
+### 1. mcp_claudeflow_collect_feedback
+Displays a WPF application to collect user feedback.
+- **Purpose**: Gathers text and image feedback from the user.
+- **Key Parameters**: `title` (optional window title), `prompt` (optional user prompt).
+- **Usage**: Refer to the "Feedback Collection Guidelines" section for detailed usage and best practices.
+- **Features**: Supports Markdown in prompts, image attachments, countdown timer, and auto-close with a default message on timeout.
 
-The `collect_feedback` tool accepts the following parameters:
+### 2. get_time
+Returns the current date and time.
+- **Parameters**: `format` (optional: "full", "iso", "date", "time", "unix"), `timezone` (optional).
 
-- `title` (optional): Custom title for the feedback window (default: "AI Feedback Collection")
-- `prompt` (optional): Custom prompt text displayed to the user (default: "Please provide your feedback or describe your issue:")
+### 3. take_screenshot
+Takes a screenshot of a specified webpage.
+- **Parameters**: `url`, `fullPage` (optional), `waitTime` (optional), `actions` (optional array for page interaction).
 
-## Example Usage
+### 4. get_console_errors
+Collects JavaScript console errors from a webpage.
+- **Parameters**: `url`, `actions` (optional array for page interaction).
 
-```javascript
-// Example of how an AI assistant might use the tool
-const feedback = await collectFeedback({
-  title: "Report an Issue",
-  prompt: "Please describe the problem you're experiencing:"
-});
+## Development
 
-// The AI can then process the feedback
-console.log(`User reported: ${feedback.text}`);
-if (feedback.hasImage) {
-  console.log("User attached an image to illustrate the issue");
-}
-``` 
+### Building
+```bash
+npm install
+npm run build
+```

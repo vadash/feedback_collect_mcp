@@ -25,6 +25,7 @@ interface FeedbackData {
   hasImage?: boolean;
   imagePath?: string;
   imageType?: string;
+  actionType?: string; // New field for action type: "submit", "approve", or "reject"
   timestamp: string;
 }
 
@@ -57,10 +58,62 @@ async function checkFileWithRetry(filePath: string, maxRetries = 10, delayMs = 3
   return false;
 }
 
+// Helper function to get formatted time information
+function getTimeInfo(format: string = 'full', timezone?: string): { formattedTime: string, additionalInfo: Record<string, any> } {
+  const now = new Date();
+  let formattedTime: string;
+  let additionalInfo: Record<string, any> = {};
+  
+  // Apply timezone if specified
+  let timeString: string;
+  if (timezone) {
+    try {
+      // Try to format with the specified timezone
+      timeString = now.toLocaleString("en-US", { timeZone: timezone });
+      additionalInfo.timezone = timezone;
+    } catch (error) {
+      console.error(`Invalid timezone: ${timezone}. Using local timezone.`);
+      timeString = now.toLocaleString();
+      additionalInfo.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+  } else {
+    // Use local timezone if not specified
+    timeString = now.toLocaleString();
+    additionalInfo.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+  
+  // Format the time according to the requested format
+  switch (format.toLowerCase()) {
+    case "iso":
+      formattedTime = now.toISOString();
+      break;
+    case "date":
+      formattedTime = now.toLocaleDateString();
+      break;
+    case "time":
+      formattedTime = now.toLocaleTimeString();
+      break;
+    case "unix":
+      formattedTime = Math.floor(now.getTime() / 1000).toString();
+      additionalInfo.milliseconds = now.getTime();
+      break;
+    case "full":
+    default:
+      formattedTime = timeString;
+      // Add additional date components
+      additionalInfo.date = now.toLocaleDateString();
+      additionalInfo.time = now.toLocaleTimeString();
+      additionalInfo.iso = now.toISOString();
+      additionalInfo.unix = Math.floor(now.getTime() / 1000);
+  }
+  
+  return { formattedTime, additionalInfo };
+}
+
 // Create an MCP server
 const server = new McpServer({
-  name: "UserFeedbackTool",
-  version: "1.0.0"
+  name: "ClaudeFlow",
+  version: "1.1.0"
 });
 
 // Check if FeedbackApp.exe exists before launching
@@ -70,14 +123,16 @@ if (!existsSync(appPath)) {
   console.error(`Make sure to build the WPF application first using "dotnet build FeedbackApp -c Release"`);
 }
 
-// Tool to collect user feedback with optional image upload
+// Tool to collect user feedback with optional image upload and time information
 server.tool(
   "collect_feedback", 
   { 
-    title: z.string().optional().default("AI Feedback Collection"),
-    prompt: z.string().optional().default("Please provide your feedback or describe your issue:")
+    title: z.string().optional().default("AI Feedback Collection").describe("The title of the feedback window."),
+    prompt: z.string().optional().default("Please provide your feedback or describe your issue:").describe("The message displayed to the user in the feedback window."),
+    timeFormat: z.string().optional().default("full").describe("The format for the time information (e.g., 'full', 'iso', 'date', 'time', 'unix')."),
+    timezone: z.string().optional().describe("The timezone to use for the time information (e.g., 'America/New_York'). Defaults to local.")
   },
-  async ({ title, prompt }) => {
+  async ({ title, prompt, timeFormat, timezone }) => {
     try {
       console.error("Starting feedback collection...");
       
@@ -183,9 +238,12 @@ server.tool(
       // Wait for the feedback data
       const feedback = await feedbackPromise;
       
+      // Get time information
+      const { formattedTime, additionalInfo } = getTimeInfo(timeFormat, timezone);
+      
       // Process the feedback data
       let responseContent: any[] = [
-        { type: "text", text: `User Feedback: ${feedback.text}` }
+        { type: "text", text: `${feedback.text}` }
       ];
       
       // Handle multiple images (new format)
@@ -239,6 +297,22 @@ server.tool(
         }
       }
       
+      // Add time information to the response
+      responseContent.push({
+        type: "text",
+        text: `Current time: ${formattedTime}`
+      });
+      
+      // Add additional time information
+      const detailsText = Object.entries(additionalInfo)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+      
+      responseContent.push({
+        type: "text",
+        text: detailsText
+      });
+      
       return {
         content: responseContent
       };
@@ -256,97 +330,7 @@ server.tool(
   }
 );
 
-// Tool to get the current date and time with optional formatting
-server.tool(
-  "get_time",
-  {
-    format: z.string().optional().default("full"),
-    timezone: z.string().optional()
-  },
-  async ({ format, timezone }) => {
-    try {
-      console.error("Getting time information...");
-      
-      const now = new Date();
-      let formattedTime: string;
-      let additionalInfo: Record<string, any> = {};
-      
-      // Apply timezone if specified
-      let timeString: string;
-      if (timezone) {
-        try {
-          // Try to format with the specified timezone
-          timeString = now.toLocaleString("en-US", { timeZone: timezone });
-          additionalInfo.timezone = timezone;
-        } catch (error) {
-          console.error(`Invalid timezone: ${timezone}. Using local timezone.`);
-          timeString = now.toLocaleString();
-          additionalInfo.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        }
-      } else {
-        // Use local timezone if not specified
-        timeString = now.toLocaleString();
-        additionalInfo.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      }
-      
-      // Format the time according to the requested format
-      switch (format.toLowerCase()) {
-        case "iso":
-          formattedTime = now.toISOString();
-          break;
-        case "date":
-          formattedTime = now.toLocaleDateString();
-          break;
-        case "time":
-          formattedTime = now.toLocaleTimeString();
-          break;
-        case "unix":
-          formattedTime = Math.floor(now.getTime() / 1000).toString();
-          additionalInfo.milliseconds = now.getTime();
-          break;
-        case "full":
-        default:
-          formattedTime = timeString;
-          // Add additional date components
-          additionalInfo.date = now.toLocaleDateString();
-          additionalInfo.time = now.toLocaleTimeString();
-          additionalInfo.iso = now.toISOString();
-          additionalInfo.unix = Math.floor(now.getTime() / 1000);
-      }
-      
-      // Create a detailed time information string for additional details
-      const detailsText = Object.entries(additionalInfo)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join('\n');
-      
-      // Create response with formatted time and additional information as text
-      return {
-        content: [
-          { 
-            type: "text", 
-            text: `Current time: ${formattedTime}`
-          },
-          {
-            type: "text",
-            text: detailsText
-          }
-        ]
-      };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error getting time:", error);
-      return {
-        content: [{ 
-          type: "text", 
-          text: `Error getting time: ${errorMessage}` 
-        }],
-        isError: true
-      };
-    }
-  }
-);
-
 // Start the server using stdio transport
 const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error("User Feedback MCP server running on stdio"); 
+server.connect(transport);
+console.error("MCP server started and listening on stdio"); 
