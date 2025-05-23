@@ -87,19 +87,7 @@ Displays a WPF application to collect user feedback.
 - **Key Parameters**: `title` (optional window title), `prompt` (optional user prompt).
 - **Usage**: Refer to the "Feedback Collection Guidelines" section for detailed usage and best practices.
 - **Features**: Supports Markdown in prompts, image attachments, countdown timer, and auto-close with a default message on timeout.
-
-### 2. get_time
-Returns the current date and time.
-- **Parameters**: `format` (optional: "full", "iso", "date", "time", "unix"), `timezone` (optional).
-
-### 3. take_screenshot
-Takes a screenshot of a specified webpage.
-- **Parameters**: `url`, `fullPage` (optional), `waitTime` (optional), `actions` (optional array for page interaction).
-
-### 4. get_console_errors
-Collects JavaScript console errors from a webpage.
-- **Parameters**: `url`, `actions` (optional array for page interaction).
-
+- **Temporal Context**: Feedback always has time context so the AI knows
 ## Development
 
 ### Building
