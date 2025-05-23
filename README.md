@@ -5,16 +5,25 @@ This project implements a Model Context Protocol (MCP) server that enables AI as
 > **Note:** This project is designed for Windows only and does not support macOS or other operating systems. It was created as a personal project to enable more efficient collaboration with AI assistants, reducing unused requests and improving workflow continuity.
 
 
-AI Rules:
+Example Rules
 ```
 # Feedback Collection Guidelines
 
-- Collect feedback before and after changes, or when requested.
-- Use clear titles and specific questions.
-- Wait for user input before proceeding.
-- Follow feedback exactly; if none, use best judgment.
-- Start a new cycle for additional requests.
-- Tool provides current time and timezone context. 
+Use the `mcp_claudeflow_collect_feedback` tool to gather user input during development.
+
+## When to Collect Feedback
+- Before implementing any changes
+- After implementing changes
+- When requested by the user
+
+## Best Practices
+- Use clear, concise titles for feedback requests
+- Ask specific questions related to implementation
+- Wait for user input before proceeding to next tasks
+- Follow feedback precisely when received
+- When no feedback is given, proceed with best judgment
+- For additional change requests, start a new feedback cycle
+- The tool provides temporal context (current time, timezone, date) 
 ```
 
 
