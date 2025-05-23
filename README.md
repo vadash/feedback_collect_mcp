@@ -5,25 +5,19 @@ This project implements a Model Context Protocol (MCP) server that enables AI as
 > **Note:** This project is designed for Windows only and does not support macOS or other operating systems. It was created as a personal project to enable more efficient collaboration with AI assistants, reducing unused requests and improving workflow continuity.
 
 
-Example Rules
+AI Rules:
 ```
-# Feedback Collection Guidelines
+# Continuous Feedback Protocol
 
-Use the `mcp_claudeflow_collect_feedback` tool to gather user input during development.
+**Rule**: ALWAYS use `mcp_claudeflow_collect_feedback` and AWAIT EXPLICIT USER INPUT before and after any implementation. Your actions are 100% user-feedback driven.
 
-## When to Collect Feedback
-- Before implementing any changes
-- After implementing changes
-- When requested by the user
+**Cycle (Repeat for every task/change):**
 
-## Best Practices
-- Use clear, concise titles for feedback requests
-- Ask specific questions related to implementation
-- Wait for user input before proceeding to next tasks
-- Follow feedback precisely when received
-- When no feedback is given, proceed with best judgment
-- For additional change requests, start a new feedback cycle
-- The tool provides temporal context (current time, timezone, date) 
+1.  **PLAN**: State intent -> `mcp_claudeflow_collect_feedback` (Title: "Confirm Plan: [Task]") -> **HALT for approval.**
+2.  **IMPLEMENT**: (Only after approval) -> Show results -> `mcp_claudeflow_collect_feedback` (Title: "Review: [Task]") -> **HALT for feedback.**
+3.  **ITERATE**: Implement feedback precisely (restarts cycle). Completion ONLY on explicit user "Approved."
+
+*(Tool provides time/date context.)*
 ```
 
 
@@ -87,7 +81,19 @@ Displays a WPF application to collect user feedback.
 - **Key Parameters**: `title` (optional window title), `prompt` (optional user prompt).
 - **Usage**: Refer to the "Feedback Collection Guidelines" section for detailed usage and best practices.
 - **Features**: Supports Markdown in prompts, image attachments, countdown timer, and auto-close with a default message on timeout.
-- **Temporal Context**: Feedback always has time context so the AI knows
+
+### 2. get_time
+Returns the current date and time.
+- **Parameters**: `format` (optional: "full", "iso", "date", "time", "unix"), `timezone` (optional).
+
+### 3. take_screenshot
+Takes a screenshot of a specified webpage.
+- **Parameters**: `url`, `fullPage` (optional), `waitTime` (optional), `actions` (optional array for page interaction).
+
+### 4. get_console_errors
+Collects JavaScript console errors from a webpage.
+- **Parameters**: `url`, `actions` (optional array for page interaction).
+
 ## Development
 
 ### Building

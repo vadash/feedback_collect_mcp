@@ -1178,8 +1178,6 @@ namespace FeedbackApp
                 {
                     if (_textChangedTimer != null) _textChangedTimer.Stop(); // Stop timer first
                     this.SizeToContent = SizeToContent.Height;
-                    // Re-check scrolling after resize and delay
-                    UpdateScrollIndicatorVisibility(); 
                 };
             }
             
