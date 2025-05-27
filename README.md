@@ -9,12 +9,12 @@ AI Rules:
 ```
 # Continuous Feedback Protocol
 
-**Rule**: ALWAYS use `mcp_claudeflow_collect_feedback` and AWAIT EXPLICIT USER INPUT before and after any implementation. Your actions are 100% user-feedback driven.
+**Rule**: ALWAYS use `collect_feedback` (via claude-flow MCP) and AWAIT EXPLICIT USER INPUT before and after any implementation. Your actions are 100% user-feedback driven.
 
 **Cycle (Repeat for every task/change):**
 
-1.  **PLAN**: State intent -> `mcp_claudeflow_collect_feedback` (Title: "Confirm Plan: [Task]") -> **HALT for approval.**
-2.  **IMPLEMENT**: (Only after approval) -> Show results -> `mcp_claudeflow_collect_feedback` (Title: "Review: [Task]") -> **HALT for feedback.**
+1.  **PLAN**: State intent -> `collect_feedback` (Title: "Confirm Plan: [Task]") -> **HALT for approval.**
+2.  **IMPLEMENT**: (Only after approval) -> Show results -> `collect_feedback` (Title: "Review: [Task]") -> **HALT for feedback.**
 3.  **ITERATE**: Implement feedback precisely (restarts cycle). Completion ONLY on explicit user "Approved."
 
 *(Tool provides time/date context.)*
@@ -61,7 +61,7 @@ To use this MCP server with Cursor or another MCP client, add the following conf
 ```json
 {
   "mcpServers": {
-    "userFeedback": {
+    "claude_flow": {
       "command": "node",
       "args": ["C:/path/to/your/project/dist/index.js"]
     }

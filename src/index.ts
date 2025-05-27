@@ -112,7 +112,7 @@ function getTimeInfo(format: string = 'full', timezone?: string): { formattedTim
 
 // Create an MCP server
 const server = new McpServer({
-  name: "ClaudeFlow",
+  name: "claude_flow",
   version: "1.1.0"
 });
 
