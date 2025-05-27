@@ -17,7 +17,7 @@ AI Rules:
 2.  **IMPLEMENT**: (Only after approval) -> Show results -> `collect_feedback` (Title: "Review: [Task]") -> **HALT for feedback.**
 3.  **ITERATE**: Implement feedback precisely (restarts cycle). Completion ONLY on explicit user "Approved."
 
-*(Tool provides time/date context.)*
+*(Tool provides context.)*
 ```
 
 
@@ -75,24 +75,12 @@ Replace `C:/path/to/your/project` with the absolute path to your project directo
 
 This server provides the following tools:
 
-### 1. mcp_claudeflow_collect_feedback
+### 1. collect_feedback
 Displays a WPF application to collect user feedback.
 - **Purpose**: Gathers text and image feedback from the user.
 - **Key Parameters**: `title` (optional window title), `prompt` (optional user prompt).
 - **Usage**: Refer to the "Feedback Collection Guidelines" section for detailed usage and best practices.
 - **Features**: Supports Markdown in prompts, image attachments, countdown timer, and auto-close with a default message on timeout.
-
-### 2. get_time
-Returns the current date and time.
-- **Parameters**: `format` (optional: "full", "iso", "date", "time", "unix"), `timezone` (optional).
-
-### 3. take_screenshot
-Takes a screenshot of a specified webpage.
-- **Parameters**: `url`, `fullPage` (optional), `waitTime` (optional), `actions` (optional array for page interaction).
-
-### 4. get_console_errors
-Collects JavaScript console errors from a webpage.
-- **Parameters**: `url`, `actions` (optional array for page interaction).
 
 ## Development
 
