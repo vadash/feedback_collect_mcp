@@ -36,3 +36,4 @@ docs/
 *.tlh
 *.tmp_proj
 *_wpftmp.csproj 
+/claude-desktop-config-example.json
