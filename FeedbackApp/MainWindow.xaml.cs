@@ -631,10 +631,7 @@ namespace FeedbackApp
 
         private void ResetAutoCloseTimer()
         {
-            if (_timerService.ShouldTimerBeActive(string.IsNullOrWhiteSpace(FeedbackTextBox.Text)))
-            {
-                _timerService.ResetTimer();
-            }
+            _timerService.ResetTimer();
         }
 
         // Helper method to update the scroll indicator visibility
