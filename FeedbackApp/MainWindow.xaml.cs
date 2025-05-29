@@ -96,6 +96,10 @@ namespace FeedbackApp
         {
             await _coordinator.InitializeAsync();
 
+            // Update properties from configuration after command line arguments are processed
+            _windowTitle = _configuration.WindowTitle;
+            _promptText = _configuration.PromptText;
+
             // Update UI bindings after initialization
             OnPropertyChanged(nameof(Snippets));
             OnPropertyChanged(nameof(WindowTitle));
