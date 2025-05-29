@@ -225,7 +225,7 @@ namespace FeedbackApp
             }
         }
 
-        private async void MainWindow_Closing(object sender, CancelEventArgs e)
+        private async void MainWindow_Closing(object? sender, CancelEventArgs e)
         {
             try
             {
@@ -263,7 +263,7 @@ namespace FeedbackApp
             try
             {
                 // Try to extract image from clipboard
-                if (_imageService.TryGetImageFromClipboard(out BitmapSource? image))
+                if (_imageService.TryGetImageFromClipboard(out BitmapSource? image) && image != null)
                 {
                     // Check if we can add more images
                     if (!_imageService.CanAddMoreImages(_images.Count))
@@ -544,7 +544,10 @@ namespace FeedbackApp
             timer.Tick += (s, args) =>
             {
                 _uiManager.RecalculateWindowSize();
-                ((DispatcherTimer)s).Stop();
+                if (s is DispatcherTimer dispatcherTimer)
+                {
+                    dispatcherTimer.Stop();
+                }
             };
             timer.Interval = TimeSpan.FromMilliseconds(300);
             timer.Start();
@@ -732,7 +735,7 @@ namespace FeedbackApp
         }
 
         // Handle manage snippets button click
-        private async void ManageSnippetsButton_Click(object sender, RoutedEventArgs e)
+        private void ManageSnippetsButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
