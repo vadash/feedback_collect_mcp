@@ -105,11 +105,8 @@ namespace FeedbackApp.Coordinators
             _mainWindow.PreviewKeyDown += (s, e) => ResetAutoCloseTimer();
             _mainWindow.Activated += (s, e) => ResetAutoCloseTimer();
 
-            // Text box events
+            // Text box events - Note: PreviewKeyDown, PreviewDragOver, and Drop are handled via XAML to avoid duplicates
             _feedbackTextBox.TextChanged += FeedbackTextBox_TextChanged;
-            _feedbackTextBox.PreviewKeyDown += FeedbackTextBox_PreviewKeyDown;
-            _feedbackTextBox.PreviewDragOver += FeedbackTextBox_PreviewDragOver;
-            _feedbackTextBox.Drop += FeedbackTextBox_Drop;
 
             // Snippet combo box events
             _snippetsComboBox.SelectionChanged += SnippetsComboBox_SelectionChanged;
