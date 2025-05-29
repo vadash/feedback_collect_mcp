@@ -27,6 +27,7 @@ namespace FeedbackApp
         private readonly SnippetService _snippetService;
         private readonly ImageService _imageService;
         private readonly TimerService _timerService;
+        private readonly AudioService _audioService;
         private readonly UIManager _uiManager;
 
         // Properties
@@ -86,6 +87,7 @@ namespace FeedbackApp
             _snippetService = new SnippetService();
             _imageService = new ImageService();
             _timerService = new TimerService();
+            _audioService = new AudioService();
 
             // Initialize UI manager
             _uiManager = new UIManager(
@@ -105,6 +107,9 @@ namespace FeedbackApp
         {
             try
             {
+                // Play startup sound
+                _audioService.PlayStartupSound(0.5); // 50% volume
+
                 // Load snippets
                 Snippets = await _snippetService.LoadSnippetsAsync();
 
@@ -233,8 +238,9 @@ namespace FeedbackApp
                 // Clean up temp images
                 _imageService.CleanupTempImages(_images);
 
-                // Dispose of timer service
+                // Dispose of services
                 _timerService.Dispose();
+                _audioService.Dispose();
             }
             catch (Exception ex)
             {

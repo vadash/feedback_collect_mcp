@@ -13,4 +13,10 @@
     <PackageReference Include="Markdig.Wpf" Version="0.5.0.1" />
   </ItemGroup>
 
-</Project> 
+  <ItemGroup>
+    <Content Include="sounds\stalker_pda_sound.wav">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
