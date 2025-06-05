@@ -107,7 +107,8 @@ namespace FeedbackApp.Infrastructure
             System.Windows.Controls.TextBlock scrollIndicator,
             System.Windows.Controls.TextBox feedbackTextBox,
             System.Windows.Controls.ComboBox snippetsComboBox,
-            System.Windows.Window mainWindow)
+            System.Windows.Window mainWindow,
+            System.Collections.Generic.List<Models.ImageItemModel> images)
         {
             // Register UI Manager
             var uiManager = new UIManager(
@@ -122,7 +123,6 @@ namespace FeedbackApp.Infrastructure
 
             // Register handlers
             var imageService = GetService<ImageService>();
-            var images = new System.Collections.Generic.List<Models.ImageItemModel>();
             var imageHandler = new ImageEventHandler(imageService, uiManager, images);
             RegisterSingleton(imageHandler);
 

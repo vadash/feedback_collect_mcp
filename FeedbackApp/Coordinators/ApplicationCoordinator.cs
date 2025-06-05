@@ -29,9 +29,9 @@ namespace FeedbackApp.Coordinators
         private readonly ComboBox _snippetsComboBox;
         
         // Collections
-        private readonly List<ImageItemModel> _images = new();
+        private readonly List<ImageItemModel> _images;
         private ObservableCollection<SnippetModel> _snippets = new();
-        
+
         // UI state
         private DispatcherTimer? _textChangedTimer;
 
@@ -42,17 +42,19 @@ namespace FeedbackApp.Coordinators
         }
 
         public ApplicationCoordinator(
-            ServiceContainer serviceContainer, 
+            ServiceContainer serviceContainer,
             AppConfiguration configuration,
             Window mainWindow,
             TextBox feedbackTextBox,
-            ComboBox snippetsComboBox)
+            ComboBox snippetsComboBox,
+            List<ImageItemModel> images)
         {
             _serviceContainer = serviceContainer ?? throw new ArgumentNullException(nameof(serviceContainer));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _mainWindow = mainWindow ?? throw new ArgumentNullException(nameof(mainWindow));
             _feedbackTextBox = feedbackTextBox ?? throw new ArgumentNullException(nameof(feedbackTextBox));
             _snippetsComboBox = snippetsComboBox ?? throw new ArgumentNullException(nameof(snippetsComboBox));
+            _images = images ?? throw new ArgumentNullException(nameof(images));
         }
 
         /// <summary>

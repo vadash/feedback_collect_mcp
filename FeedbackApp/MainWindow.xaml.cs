@@ -66,7 +66,10 @@ namespace FeedbackApp
             // Initialize service container
             _serviceContainer = ServiceContainer.ConfigureServices(_configuration);
 
-            // Configure UI services
+            // Create shared images collection
+            var images = new System.Collections.Generic.List<Models.ImageItemModel>();
+
+            // Configure UI services with shared images collection
             _serviceContainer.ConfigureUIServices(
                 ImagesPanel,
                 NoImagesPlaceholder,
@@ -75,15 +78,17 @@ namespace FeedbackApp
                 ScrollIndicator,
                 FeedbackTextBox,
                 SnippetsComboBox,
-                this);
+                this,
+                images);
 
-            // Initialize coordinator
+            // Initialize coordinator with shared images collection
             _coordinator = new ApplicationCoordinator(
                 _serviceContainer,
                 _configuration,
                 this,
                 FeedbackTextBox,
-                SnippetsComboBox);
+                SnippetsComboBox,
+                images);
 
             // Initialize the application
             InitializeAsync();
