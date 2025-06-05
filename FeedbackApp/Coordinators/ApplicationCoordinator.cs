@@ -150,9 +150,7 @@ namespace FeedbackApp.Coordinators
                     await SaveFeedbackAsync(feedbackActionHandler);
                 }
 
-                // Clean up temp images
-                var imageService = _serviceContainer.GetService<ImageService>();
-                imageService.CleanupTempImages(_images);
+                // Do not clean up temp images
 
                 // Dispose of services through container
                 _serviceContainer.Dispose();
