@@ -65,7 +65,7 @@ const server = new McpServer({
 });
 
 // Check if FeedbackApp.exe exists before launching
-const appPath = resolve(__dirname, "../FeedbackApp/bin/Release/net8.0-windows/FeedbackApp.exe");
+const appPath = resolve(__dirname, "../FeedbackApp/bin/Release/net9.0-windows/FeedbackApp.exe");
 if (!existsSync(appPath)) {
   console.error(`WARNING: FeedbackApp.exe not found at: ${appPath}`);
   console.error(`Make sure to build the WPF application first using "dotnet build FeedbackApp -c Release"`);

@@ -24,7 +24,7 @@ AI Rules:
 ## Requirements
 
 - Node.js 16.0.0 or higher
-- .NET 8.0 SDK
+- .NET 9.0 SDK
 - Windows operating system (for WPF application)
 
 ## Setup Instructions

@@ -2,7 +2,7 @@
 # Test script to launch the feedback app with markdown content to test rendering
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$FeedbackAppExe = Join-Path $ScriptDir "FeedbackApp\bin\Release\net8.0-windows\FeedbackApp.exe"
+$FeedbackAppExe = Join-Path $ScriptDir "FeedbackApp\bin\Release\net9.0-windows\FeedbackApp.exe"
 $OutputPath = Join-Path $ScriptDir "test_markdown_output.json"
 
 # Title and Markdown content to test

@@ -26,7 +26,7 @@ if (Test-Path $feedbackFile) {
 }
 
 # Get the path to the WPF application
-$appPath = Join-Path (Get-Location) "FeedbackApp\bin\Release\net8.0-windows\FeedbackApp.exe"
+$appPath = Join-Path (Get-Location) "FeedbackApp\bin\Release\net9.0-windows\FeedbackApp.exe"
 
 # Check if the application exists
 if (-not (Test-Path $appPath)) {

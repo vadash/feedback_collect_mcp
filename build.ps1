@@ -12,16 +12,16 @@ try {
     exit 1
 }
 
-# Check if .NET 8 SDK is installed
+# Check if .NET 9 SDK is installed
 try {
     $dotnetVersion = dotnet --version
-    if ($dotnetVersion -notlike "8.*") {
-        Write-Host "Warning: .NET version is $dotnetVersion. This project requires .NET 8.0 SDK." -ForegroundColor Yellow
+    if ($dotnetVersion -notlike "9.*") {
+        Write-Host "Warning: .NET version is $dotnetVersion. This project requires .NET 9.0 SDK." -ForegroundColor Yellow
     } else {
         Write-Host ".NET SDK version: $dotnetVersion" -ForegroundColor Cyan
     }
 } catch {
-    Write-Host "Error: .NET SDK is not installed or not in PATH. Please install .NET 8.0 SDK." -ForegroundColor Red
+    Write-Host "Error: .NET SDK is not installed or not in PATH. Please install .NET 9.0 SDK." -ForegroundColor Red
     exit 1
 }
 
@@ -68,7 +68,7 @@ if (-not (Test-Path -Path "dist/index.js")) {
     exit 1
 }
 
-if (-not (Test-Path -Path "FeedbackApp/bin/Release/net8.0-windows/FeedbackApp.exe")) {
+if (-not (Test-Path -Path "FeedbackApp/bin/Release/net9.0-windows/FeedbackApp.exe")) {
     Write-Host "Error: WPF application build failed. FeedbackApp.exe not found." -ForegroundColor Red
     exit 1
 }

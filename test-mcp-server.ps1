@@ -5,7 +5,7 @@
 Write-Host "Checking if components are built..." -ForegroundColor Cyan
 
 $mcpServerPath = Join-Path (Get-Location) "dist\index.js"
-$wpfAppPath = Join-Path (Get-Location) "FeedbackApp\bin\Release\net8.0-windows\FeedbackApp.exe"
+$wpfAppPath = Join-Path (Get-Location) "FeedbackApp\bin\Release\net9.0-windows\FeedbackApp.exe"
 
 $needBuild = $false
 
